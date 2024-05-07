@@ -25,4 +25,4 @@ sketchbook: sketchbook.c | dist/libraylib.dylib
 	$(CC) -o $@ $< $(CFLAGS) $(INCLUDE_PATHS) $(LDFLAGS) $(LDLIBS)
 
 TAGS: $(RAYLIB_PATH)/src/*.[ch] $(RAYGUI_PATH)/src/*.[ch] $(SKETCHES_PATH)/*.[ch] *.c
-	etags -l c --declarations -o $@ $?
+	etags -l c --declarations -o $@ $^
