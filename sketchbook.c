@@ -143,6 +143,14 @@ static void drawSketchMenu(Sketch* current_sketch, SketchFileList* sketches) {
   EndDrawing();
 }
 
+static bool sketchFileChanged(Sketch* current_sketch) {
+  static long last_mod_time = 0;
+  long mod_time = GetFileModTime(current_sketch->path);
+  bool result = (last_mod_time > 0) && (mod_time > last_mod_time);
+  last_mod_time = mod_time;
+  return result;
+}
+
 
 char path[PATH_MAX];
 Sketch current_sketch = { .state = UNLOADED, .path = path };
@@ -151,11 +159,22 @@ int main(void)
 {
   InitWindow(820, 620, "Sketchbook");
   SetTargetFPS(60);
+
+  unsigned char frame_counter = 0;
   SketchFileList sketches = loadSketchFiles();
   while (!WindowShouldClose()) {
+    if (++frame_counter >= 60)
+      frame_counter = 0;
+    if (frame_counter % 12 == 0) {
+      if (current_sketch.state == RUNNING && sketchFileChanged(&current_sketch)) {
+        reloadSketch(&current_sketch);
+      }
+    }
+
     if (IsKeyPressed(KEY_R)) {
       reloadSketch(&current_sketch);
     }
+
     switch (current_sketch.state) {
     case UNLOADED:
       drawSketchMenu(&current_sketch, &sketches);
@@ -168,6 +187,7 @@ int main(void)
       loopSketch(&current_sketch);
     }
   }
+
   unloadSketchFiles(sketches);
   CloseWindow();
   return EXIT_SUCCESS;
