@@ -109,7 +109,7 @@ UNDO:
   return false;
 }
 
-static void reloadSketch(Sketch* sketch) {
+static void unloadSketch(Sketch* sketch) {
   if (sketch->state == UNLOADED)
     return;
   assert(sketch->state == RUNNING);
@@ -117,6 +117,11 @@ static void reloadSketch(Sketch* sketch) {
   sketch->handle = NULL;
   sketch->init = NULL;
   sketch->loop = NULL;
+  sketch->state = UNLOADED;
+}
+
+static void reloadSketch(Sketch* sketch) {
+  unloadSketch(sketch);
   sketch->state = SELECTED;
   loadSketch(sketch);
 }
@@ -174,8 +179,8 @@ int main(void)
       }
     }
 
-    if (IsKeyPressed(KEY_R)) {
-      reloadSketch(&current_sketch);
+    if (IsKeyPressed(KEY_F10)) {
+      unloadSketch(&current_sketch);
     }
 
     switch (current_sketch.state) {
