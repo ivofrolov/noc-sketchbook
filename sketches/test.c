@@ -1,10 +1,14 @@
 #include "raylib.h"
 
-void init() {};
+// this function is called in texture rendering context
+// BeginTextureMode();
+void init(void) {}
+// EndTextureMode();
 
-void loop() {
-  BeginDrawing();
+// this function is called in texture rendering context
+// BeginTextureMode();
+void loop(void) {
   ClearBackground(RAYWHITE);
   DrawText("Congrats! You created your first window!", 190, 200, 20, LIGHTGRAY);
-  EndDrawing();
-};
+}
+// EndTextureMode();

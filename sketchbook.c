@@ -158,7 +158,10 @@ Sketch current_sketch = { .state = UNLOADED, .path = path };
 int main(void)
 {
   InitWindow(820, 620, "Sketchbook");
-  SetTargetFPS(60);
+  SetTargetFPS(30);
+
+  // we'll use this as a canvas for sketches
+  RenderTexture2D target = LoadRenderTexture(820, 620);
 
   unsigned char frame_counter = 0;
   SketchFileList sketches = loadSketchFiles();
@@ -182,13 +185,23 @@ int main(void)
     case SELECTED:
       if (!loadSketch(&current_sketch))
         break;
+      BeginTextureMode(target);
+      ClearBackground(WHITE);
       initSketch(&current_sketch);
+      EndTextureMode();
     case RUNNING:
+      BeginTextureMode(target);
       loopSketch(&current_sketch);
+      EndTextureMode();
+      BeginDrawing();
+      ClearBackground(WHITE);
+      DrawTextureRec(target.texture, (Rectangle) { 0, 0, (float)target.texture.width, (float)-target.texture.height }, (Vector2) { 0, 0 }, WHITE);
+      EndDrawing();
     }
   }
 
   unloadSketchFiles(sketches);
+  UnloadRenderTexture(target);
   CloseWindow();
   return EXIT_SUCCESS;
 }
