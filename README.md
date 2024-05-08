@@ -3,13 +3,15 @@
 I created this simple program to code along [The Nature of
 Code](https://natureofcode.com/) but it can be used for any sketches.
 
+It's based on [Raylib](https://www.raylib.com/).
+
 It can
 
   * make menu list of files in [sketches](sketches) directory,
   * execute sketch compiled to dynamic library,
   * reload sketch on file change.
 
-It's based on [Raylib](https://www.raylib.com/).
+Also you can press F10 to go back to the sketch menu.
 
 ### Building Sketchbook
 
