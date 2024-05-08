@@ -11,8 +11,14 @@ It can
 
 It's based on [Raylib](https://www.raylib.com/).
 
-### Building
+### Building Sketchbook
 
-`make sketchbook` to compile the app.
+Use `make sketchbook` command to compile the app.
 
-`make sketches/<name without extension>` to compile your sketch.
+### Building Sketch
+
+Use `make sketches/<file name without extension>` command to compile your sketch.
+
+I like to use [fswatch](https://github.com/emcrisostomo/fswatch) to automatically recompile sketch on source file change to utilize hot reloading.
+
+    fswatch -0 sketches/test.c | xargs -0 -n 1 -I {} make sketches/test
