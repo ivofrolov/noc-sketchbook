@@ -6,7 +6,7 @@ RAYGUI_PATH = lib/raygui
 export RAYLIB_RELEASE_PATH := $(CURDIR)/dist
 export RAYLIB_LIBTYPE = SHARED
 CFLAGS = -O2 -std=c99 -D_DEFAULT_SOURCE
-CFLAGS += -Wall -Wextra -Wno-missing-braces -Wunused-result -Wmissing-prototypes -Wstrict-prototypes
+CFLAGS += -Wall -Wextra -Wno-missing-braces -Wunused-result -Wstrict-prototypes
 CFLAGS += -Wl,-rpath,$(RAYLIB_RELEASE_PATH)
 INCLUDE_PATHS = -I. -I$(RAYLIB_PATH)/src -I$(RAYLIB_PATH)/src/external -I$(RAYGUI_PATH)/src
 LDFLAGS = -L. -L$(RAYLIB_RELEASE_PATH) -L$(RAYLIB_PATH)/src
