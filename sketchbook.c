@@ -11,13 +11,13 @@
 
 
 typedef struct SketchFileList {
-  size_t count;
+  int count;
   char** names;
   char** paths;
 } SketchFileList;
 
-static SketchFileList loadSketchFiles() {
-  FilePathList files = LoadDirectoryFilesEx("./sketches", ".dylib", false);
+static SketchFileList loadSketchFiles(const char* directory) {
+  FilePathList files = LoadDirectoryFilesEx(directory, ".dylib", false);
 
   SketchFileList sketch_files = { .count = files.count };
   sketch_files.names = calloc(files.count, sizeof sketch_files.names);
@@ -25,7 +25,7 @@ static SketchFileList loadSketchFiles() {
   sketch_files.paths = calloc(files.count, sizeof sketch_files.paths);
   char* pathsp = calloc(files.count, PATH_MAX);
 
-  for (size_t i = 0; i < files.count; i++) {
+  for (int i = 0; i < files.count; i++) {
     sketch_files.names[i] = strncpy(namesp + PATH_MAX * i,
                                     GetFileNameWithoutExt(files.paths[i]),
                                     PATH_MAX);
@@ -137,15 +137,31 @@ static void loopSketch(Sketch* sketch) {
 }
 
 
-static void drawSketchMenu(Sketch* current_sketch, SketchFileList* sketches) {
-  BeginDrawing();
-  ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
-  for (size_t i = 0; i < sketches->count; i++){
-    if (GuiButton((Rectangle){ 20 + 100 * i, 20 + 40 * (i % 10), 80, 20 }, sketches->names[i])) {
+static void drawSketchMenu(Sketch* current_sketch,
+                           int screen_width, int screen_height,
+                           SketchFileList* sketches) {
+  int button_width = 80;
+  int button_height = 20;
+  int gap = 20;
+  int cols;
+  int window_offset;
+
+  div_t qr = div(screen_width, button_width + gap);
+  cols = qr.quot;
+  if (qr.rem >= gap) {
+    window_offset = gap + (qr.rem - gap) / 2;
+  } else {
+    window_offset = gap - (qr.rem - gap) / 2;
+  }
+
+  for (int i = 0; i < sketches->count; i++) {
+    int x = window_offset + (gap + button_width) * (i % cols);
+    int y = gap + (gap + button_height) * (i / cols);
+    if (GuiButton((Rectangle){ x, y, button_width, button_height },
+                  sketches->names[i])) {
       selectSketch(current_sketch, sketches->paths[i]);
     }
   }
-  EndDrawing();
 }
 
 static bool sketchFileChanged(Sketch* current_sketch) {
@@ -160,16 +176,17 @@ static bool sketchFileChanged(Sketch* current_sketch) {
 char path[PATH_MAX];
 Sketch current_sketch = { .state = UNLOADED, .path = path };
 
-int main(void)
-{
-  InitWindow(820, 620, "Sketchbook");
+int main(void) {
+  int screen_width = 820;
+  int screen_height = 620;
+  InitWindow(screen_width, screen_height, "Sketchbook");
   SetTargetFPS(30);
 
   // we'll use this as a canvas for sketches
-  RenderTexture2D target = LoadRenderTexture(820, 620);
-
+  RenderTexture2D target = LoadRenderTexture(screen_width, screen_height);
+  SketchFileList sketches = loadSketchFiles("./sketches");
   unsigned char frame_counter = 0;
-  SketchFileList sketches = loadSketchFiles();
+
   while (!WindowShouldClose()) {
     if (++frame_counter >= 60)
       frame_counter = 0;
@@ -185,7 +202,10 @@ int main(void)
 
     switch (current_sketch.state) {
     case UNLOADED:
-      drawSketchMenu(&current_sketch, &sketches);
+      BeginDrawing();
+      ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+      drawSketchMenu(&current_sketch, screen_width, screen_height, &sketches);
+      EndDrawing();
       break;
     case SELECTED:
       if (!loadSketch(&current_sketch))
@@ -200,7 +220,11 @@ int main(void)
       EndTextureMode();
       BeginDrawing();
       ClearBackground(WHITE);
-      DrawTextureRec(target.texture, (Rectangle) { 0, 0, (float)target.texture.width, (float)-target.texture.height }, (Vector2) { 0, 0 }, WHITE);
+      // render texture must be y-flipped due to default OpenGL coordinates (left-bottom)
+      DrawTextureRec(target.texture,
+                     (Rectangle) { 0, 0, (float)target.texture.width, (float)-target.texture.height },
+                     (Vector2) { 0, 0 },
+                     WHITE);
       EndDrawing();
     }
   }
