@@ -11,7 +11,7 @@
 
 
 typedef struct SketchFileList {
-  int count;
+  unsigned int count;
   char** names;
   char** paths;
 } SketchFileList;
@@ -25,7 +25,7 @@ static SketchFileList loadSketchFiles(const char* directory) {
   sketch_files.paths = calloc(files.count, sizeof sketch_files.paths);
   char* pathsp = calloc(files.count, PATH_MAX);
 
-  for (int i = 0; i < files.count; i++) {
+  for (unsigned int i = 0; i < files.count; i++) {
     sketch_files.names[i] = strncpy(namesp + PATH_MAX * i,
                                     GetFileNameWithoutExt(files.paths[i]),
                                     PATH_MAX);
@@ -47,20 +47,23 @@ static void unloadSketchFiles(SketchFileList files) {
 }
 
 
+#define MAX_SKETCH_STORAGE 640
+
 typedef enum {
   UNLOADED,
   SELECTED,
   RUNNING,
 } SketchState;
 
-typedef void sketch_init_function(void);
-typedef void sketch_loop_function(void);
+typedef void sketch_callback(void*);
 
 typedef struct Sketch {
   char* path;
   void* handle;
-  sketch_init_function* init;
-  sketch_loop_function* loop;
+  sketch_callback* init;
+  sketch_callback* loop;
+  sketch_callback* deinit;
+  void* storage;
   SketchState state;
 } Sketch;
 
@@ -68,7 +71,6 @@ static void selectSketch(Sketch* sketch, const char* path) {
   assert(sketch->state == UNLOADED);
   strncpy(sketch->path, path, PATH_MAX);
   sketch->state = SELECTED;
-  TraceLog(LOG_INFO, "HOTRELOAD: selected %s", path);
 };
 
 static bool loadSketch(Sketch* sketch) {
@@ -81,16 +83,23 @@ static bool loadSketch(Sketch* sketch) {
     goto UNDO;
   }
 
-  sketch_init_function* init_symp = dlsym(libp, "init");
+  sketch_callback* init_symp = dlsym(libp, "init");
   if (init_symp == NULL) {
     TraceLog(LOG_ERROR, "HOTRELOAD: could not find symbol \"init\" in %s: %s",
              sketch->path, dlerror());
     goto UNDO;
   }
 
-  sketch_loop_function* loop_symp = dlsym(libp, "loop");
+  sketch_callback* loop_symp = dlsym(libp, "loop");
   if (loop_symp == NULL) {
     TraceLog(LOG_ERROR, "HOTRELOAD: could not find symbol \"loop\" in %s: %s",
+             sketch->path, dlerror());
+    goto UNDO;
+  }
+
+  sketch_callback* deinit_symp = dlsym(libp, "deinit");
+  if (deinit_symp == NULL) {
+    TraceLog(LOG_ERROR, "HOTRELOAD: could not find symbol \"deinit\" in %s: %s",
              sketch->path, dlerror());
     goto UNDO;
   }
@@ -98,6 +107,7 @@ static bool loadSketch(Sketch* sketch) {
   sketch->handle = libp;
   sketch->init = init_symp;
   sketch->loop = loop_symp;
+  sketch->deinit = deinit_symp;
   sketch->state = RUNNING;
   TraceLog(LOG_INFO, "HOTRELOAD: loaded %s", sketch->path);
   return true;
@@ -110,17 +120,18 @@ UNDO:
 }
 
 static void unloadSketch(Sketch* sketch) {
-  if (sketch->state == UNLOADED)
-    return;
   assert(sketch->state == RUNNING);
   dlclose(sketch->handle);
   sketch->handle = NULL;
   sketch->init = NULL;
   sketch->loop = NULL;
+  sketch->deinit = NULL;
   sketch->state = UNLOADED;
+  TraceLog(LOG_INFO, "HOTRELOAD: unloaded %s", sketch->path);
 }
 
 static void reloadSketch(Sketch* sketch) {
+  assert(sketch->state == RUNNING);
   unloadSketch(sketch);
   sketch->state = SELECTED;
   loadSketch(sketch);
@@ -128,12 +139,20 @@ static void reloadSketch(Sketch* sketch) {
 
 static void initSketch(Sketch* sketch) {
   assert(sketch->state == RUNNING);
-  sketch->init();
+  sketch->storage = malloc(MAX_SKETCH_STORAGE);
+  sketch->init(sketch->storage);
   TraceLog(LOG_INFO, "HOTRELOAD: initialized %s", sketch->path);
 }
 
+static void deinitSketch(Sketch* sketch) {
+  assert(sketch->state == RUNNING);
+  sketch->deinit(sketch->storage);
+  free(sketch->storage);
+  TraceLog(LOG_INFO, "HOTRELOAD: deinitialized %s", sketch->path);
+}
+
 static void loopSketch(Sketch* sketch) {
-  sketch->loop();
+  sketch->loop(sketch->storage);
 }
 
 
@@ -154,7 +173,7 @@ static void drawSketchMenu(Sketch* current_sketch,
     window_offset = gap - (qr.rem - gap) / 2;
   }
 
-  for (int i = 0; i < sketches->count; i++) {
+  for (unsigned int i = 0; i < sketches->count; i++) {
     int x = window_offset + (gap + button_width) * (i % cols);
     int y = gap + (gap + button_height) * (i / cols);
     if (GuiButton((Rectangle){ x, y, button_width, button_height },
@@ -197,6 +216,7 @@ int main(void) {
     }
 
     if (IsKeyPressed(KEY_F10)) {
+      deinitSketch(&current_sketch);
       unloadSketch(&current_sketch);
     }
 
