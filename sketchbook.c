@@ -176,8 +176,8 @@ static void drawSketchMenu(Sketch* current_sketch,
   for (unsigned int i = 0; i < sketches->count; i++) {
     int x = window_offset + (gap + button_width) * (i % cols);
     int y = gap + (gap + button_height) * (i / cols);
-    if (GuiButton((Rectangle){ x, y, button_width, button_height },
-                  sketches->names[i])) {
+    Rectangle btn_bounds = { x, y, button_width, button_height };
+    if (GuiButton(btn_bounds, sketches->names[i])) {
       selectSketch(current_sketch, sketches->paths[i]);
     }
   }
@@ -203,7 +203,7 @@ int main(void) {
 
   // we'll use this as a canvas for sketches
   RenderTexture2D target = LoadRenderTexture(screen_width, screen_height);
-  SketchFileList sketches = loadSketchFiles("./sketches");
+  SketchFileList sketches = loadSketchFiles("./out/sketches");
   unsigned char frame_counter = 0;
 
   while (!WindowShouldClose()) {
@@ -241,10 +241,9 @@ int main(void) {
       BeginDrawing();
       ClearBackground(WHITE);
       // render texture must be y-flipped due to default OpenGL coordinates (left-bottom)
-      DrawTextureRec(target.texture,
-                     (Rectangle) { 0, 0, (float)target.texture.width, (float)-target.texture.height },
-                     (Vector2) { 0, 0 },
-                     WHITE);
+      Rectangle texture_src = { 0, 0, (float)target.texture.width, (float)-target.texture.height };
+      Vector2 texture_pos = { 0, 0 };
+      DrawTextureRec(target.texture, texture_src, texture_pos, WHITE);
       EndDrawing();
     }
   }

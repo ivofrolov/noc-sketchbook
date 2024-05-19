@@ -1,5 +1,4 @@
-*.dylib
-*.o
+out/
 
 sketches/*
-!sketches/test.c
+!sketches/sketch.h
