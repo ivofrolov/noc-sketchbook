@@ -2,3 +2,4 @@ out/
 
 sketches/*
 !sketches/sketch.h
+!sketches/defs.h

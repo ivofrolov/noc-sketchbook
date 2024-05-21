@@ -9,6 +9,8 @@
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 
+#include "sketches/defs.h"
+
 
 typedef struct SketchFileList {
   unsigned int count;
@@ -16,7 +18,7 @@ typedef struct SketchFileList {
   char** paths;
 } SketchFileList;
 
-static SketchFileList loadSketchFiles(const char* directory) {
+SketchFileList loadSketchFiles(const char* directory) {
   FilePathList files = LoadDirectoryFilesEx(directory, ".dylib", false);
 
   SketchFileList sketch_files = { .count = files.count };
@@ -39,15 +41,13 @@ static SketchFileList loadSketchFiles(const char* directory) {
   return sketch_files;
 }
 
-static void unloadSketchFiles(SketchFileList files) {
+void unloadSketchFiles(SketchFileList files) {
   free(files.names[0]);
   free(files.names);
   free(files.paths[0]);
   free(files.paths);
 }
 
-
-#define MAX_SKETCH_STORAGE 640
 
 typedef enum {
   UNLOADED,
@@ -62,18 +62,17 @@ typedef struct Sketch {
   void* handle;
   sketch_callback* init;
   sketch_callback* loop;
-  sketch_callback* deinit;
-  void* storage;
+  void* arena;
   SketchState state;
 } Sketch;
 
-static void selectSketch(Sketch* sketch, const char* path) {
+void selectSketch(Sketch* sketch, const char* path) {
   assert(sketch->state == UNLOADED);
   strncpy(sketch->path, path, PATH_MAX);
   sketch->state = SELECTED;
 };
 
-static bool loadSketch(Sketch* sketch) {
+bool loadSketch(Sketch* sketch) {
   assert(sketch->state == SELECTED);
 
   void* libp = dlopen(sketch->path, RTLD_NOW);
@@ -97,17 +96,9 @@ static bool loadSketch(Sketch* sketch) {
     goto UNDO;
   }
 
-  sketch_callback* deinit_symp = dlsym(libp, "deinit");
-  if (deinit_symp == NULL) {
-    TraceLog(LOG_ERROR, "HOTRELOAD: could not find symbol \"deinit\" in %s: %s",
-             sketch->path, dlerror());
-    goto UNDO;
-  }
-
   sketch->handle = libp;
   sketch->init = init_symp;
   sketch->loop = loop_symp;
-  sketch->deinit = deinit_symp;
   sketch->state = RUNNING;
   TraceLog(LOG_INFO, "HOTRELOAD: loaded %s", sketch->path);
   return true;
@@ -119,44 +110,35 @@ UNDO:
   return false;
 }
 
-static void unloadSketch(Sketch* sketch) {
+void unloadSketch(Sketch* sketch) {
   assert(sketch->state == RUNNING);
   dlclose(sketch->handle);
   sketch->handle = NULL;
   sketch->init = NULL;
   sketch->loop = NULL;
-  sketch->deinit = NULL;
   sketch->state = UNLOADED;
   TraceLog(LOG_INFO, "HOTRELOAD: unloaded %s", sketch->path);
 }
 
-static void reloadSketch(Sketch* sketch) {
+void reloadSketch(Sketch* sketch) {
   assert(sketch->state == RUNNING);
   unloadSketch(sketch);
   sketch->state = SELECTED;
   loadSketch(sketch);
 }
 
-static void initSketch(Sketch* sketch) {
+void initSketch(Sketch* sketch) {
   assert(sketch->state == RUNNING);
-  sketch->storage = malloc(MAX_SKETCH_STORAGE);
-  sketch->init(sketch->storage);
+  sketch->init(sketch->arena);
   TraceLog(LOG_INFO, "HOTRELOAD: initialized %s", sketch->path);
 }
 
-static void deinitSketch(Sketch* sketch) {
-  assert(sketch->state == RUNNING);
-  sketch->deinit(sketch->storage);
-  free(sketch->storage);
-  TraceLog(LOG_INFO, "HOTRELOAD: deinitialized %s", sketch->path);
-}
-
-static void loopSketch(Sketch* sketch) {
-  sketch->loop(sketch->storage);
+void loopSketch(Sketch* sketch) {
+  sketch->loop(sketch->arena);
 }
 
 
-static void drawSketchMenu(Sketch* current_sketch,
+void drawSketchMenu(Sketch* current_sketch,
                            int screen_width, int screen_height,
                            SketchFileList* sketches) {
   int button_width = 80;
@@ -183,7 +165,7 @@ static void drawSketchMenu(Sketch* current_sketch,
   }
 }
 
-static bool sketchFileChanged(Sketch* current_sketch) {
+bool sketchFileChanged(Sketch* current_sketch) {
   static long last_mod_time = 0;
   long mod_time = GetFileModTime(current_sketch->path);
   bool result = (last_mod_time > 0) && (mod_time > last_mod_time);
@@ -192,31 +174,33 @@ static bool sketchFileChanged(Sketch* current_sketch) {
 }
 
 
-char path[PATH_MAX];
-Sketch current_sketch = { .state = UNLOADED, .path = path };
-
 int main(void) {
   int screen_width = 820;
   int screen_height = 620;
+  int fps = 30;
   InitWindow(screen_width, screen_height, "Sketchbook");
-  SetTargetFPS(30);
+  SetTargetFPS(fps);
 
   // we'll use this as a canvas for sketches
-  RenderTexture2D target = LoadRenderTexture(screen_width, screen_height);
-  SketchFileList sketches = loadSketchFiles("./out/sketches");
-  unsigned char frame_counter = 0;
+  RenderTexture2D canvas = LoadRenderTexture(screen_width, screen_height);
 
+  SketchFileList sketches = loadSketchFiles("./out/sketches");
+  Sketch current_sketch = {
+    .state = UNLOADED,
+    .path = calloc(PATH_MAX, sizeof(char)),
+    .arena = malloc(ARENA_SIZE),
+  };
+
+  unsigned char sketch_check_counter = 0;
   while (!WindowShouldClose()) {
-    if (++frame_counter >= 60)
-      frame_counter = 0;
-    if (frame_counter % 12 == 0) {
+    if (++sketch_check_counter % (fps / 4) == 0) {
+      sketch_check_counter = 0;
       if (current_sketch.state == RUNNING && sketchFileChanged(&current_sketch)) {
         reloadSketch(&current_sketch);
       }
     }
 
     if (IsKeyPressed(KEY_F10)) {
-      deinitSketch(&current_sketch);
       unloadSketch(&current_sketch);
     }
 
@@ -230,26 +214,26 @@ int main(void) {
     case SELECTED:
       if (!loadSketch(&current_sketch))
         break;
-      BeginTextureMode(target);
+      BeginTextureMode(canvas);
       ClearBackground(WHITE);
       initSketch(&current_sketch);
       EndTextureMode();
     case RUNNING:
-      BeginTextureMode(target);
+      BeginTextureMode(canvas);
       loopSketch(&current_sketch);
       EndTextureMode();
       BeginDrawing();
       ClearBackground(WHITE);
-      // render texture must be y-flipped due to default OpenGL coordinates (left-bottom)
-      Rectangle texture_src = { 0, 0, (float)target.texture.width, (float)-target.texture.height };
+      // rendered texture must be y-flipped due to default OpenGL coordinates (left-bottom)
+      Rectangle texture_src = { 0, 0, (float)canvas.texture.width, (float)-canvas.texture.height };
       Vector2 texture_pos = { 0, 0 };
-      DrawTextureRec(target.texture, texture_src, texture_pos, WHITE);
+      DrawTextureRec(canvas.texture, texture_src, texture_pos, WHITE);
       EndDrawing();
     }
   }
 
   unloadSketchFiles(sketches);
-  UnloadRenderTexture(target);
+  UnloadRenderTexture(canvas);
   CloseWindow();
   return EXIT_SUCCESS;
 }
